@@ -15,3 +15,7 @@ COPY pyproject.toml .python-version uv.lock ./
 
 # Create virtual environment and install dependencies from lock file
 RUN uv sync --locked
+
+COPY data_ingestion.py .
+
+ENTRYPOINT [ "python", "data_ingestion.py" ]

@@ -46,7 +46,8 @@ dtype = {
 @click.option('--pg-db', default='ny_taxi', show_default=True, help='Postgres database')
 @click.option('--month', default=11, show_default=True, type=int, help='Month (1-12)')
 @click.option('--year', default=2025, show_default=True, type=int, help='Year')
-def run(pg_user, pg_password, pg_host, pg_port, pg_db, month, year):
+@click.option('--target-table', default='green_taxi', show_default=True, help='Target table name')
+def run(pg_user, pg_password, pg_host, pg_port, pg_db, month, year, target_table):
     prefix = 'https://d37ci6vzurychx.cloudfront.net/trip-data'
     taxi_url = f'{prefix}/green_tripdata_{year}-{month:02d}.parquet'
     zone_url = 'https://github.com/DataTalksClub/nyc-tlc-data/releases/download/misc/taxi_zone_lookup.csv'
@@ -56,7 +57,9 @@ def run(pg_user, pg_password, pg_host, pg_port, pg_db, month, year):
     # download parquet file and load into sql
     file_name = download_parquet_file(taxi_url, month, year)
     pq_file = pq.ParquetFile(file_name)
-    load_trip_data_to_sql(pq_file, engine)
+
+    target_table = f'{target_table}_{year}_{month:02d}'
+    load_trip_data_to_sql(pq_file, engine, target_table)
     
     # get zone data and load into sql
     load_zone_data_to_sql(zone_url, engine)
@@ -80,7 +83,7 @@ def download_parquet_file(url: str, month: int, year: int) -> str:
 
     return file_name
 
-def load_trip_data_to_sql(pq_file: pq.ParquetFile, engine: str) -> None:
+def load_trip_data_to_sql(pq_file: pq.ParquetFile, engine: str, target_table: str) -> None:
     make_taxi_table = True
     pq_iter = pq_file.iter_batches(batch_size=10000)
     for chunk in tqdm(pq_iter):
@@ -89,17 +92,17 @@ def load_trip_data_to_sql(pq_file: pq.ParquetFile, engine: str) -> None:
         #create table schema for taxi data if one does not exist
         if make_taxi_table:
             df.head(0).to_sql(
-                name='green_taxi',
+                name=target_table,
                 con=engine,
                 if_exists='replace'
             )
             make_taxi_table = False
-            print('Table name: green_taxi created')
+            print(f'Table name: {target_table} created')
 
         #transform data types and load to sql
         print(f"Processing a chunk of {len(df)} rows...")
         df = df.astype(dtype)
-        df.to_sql(name='green_taxi', con=engine, if_exists='append')
+        df.to_sql(name=target_table, con=engine, if_exists='append')
 
 def load_zone_data_to_sql(url: str, engine: str):
     df = pd.read_csv(url)
